@@ -1,21 +1,42 @@
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"context"
 	"log"
+
+	"github.com/gofiber/fiber/v2"
+
+	"SDOBA/internal/config"
+	"SDOBA/internal/database"
 )
 
-//TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
-
 func main() {
+	cfg := config.Load()
+
+	db, err := database.NewPostgresPool(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
 	app := fiber.New()
 
 	app.Get("/health", func(c *fiber.Ctx) error {
+		err := db.Ping(context.Background())
+
+		if err != nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"status":   "error",
+				"database": "unavailable",
+			})
+		}
+
 		return c.JSON(fiber.Map{
-			"status": "ok",
+			"status":   "ok",
+			"database": "ok",
+			"service":  cfg.App.Name,
 		})
 	})
 
-	log.Fatal(app.Listen(":8080"))
+	log.Fatal(app.Listen(":" + cfg.App.Port))
 }
