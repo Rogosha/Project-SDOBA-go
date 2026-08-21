@@ -1,7 +1,8 @@
 package main
 
 import (
-	"context"
+	"SDOBA/internal/repository"
+	"SDOBA/internal/service"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,30 +14,42 @@ import (
 func main() {
 	cfg := config.Load()
 
-	db, err := database.NewPostgresPool(cfg)
+	db, err := database.NewPostgres(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatal(err)
+	}
 
 	app := fiber.New()
 
 	app.Get("/health", func(c *fiber.Ctx) error {
-		err := db.Ping(context.Background())
-
-		if err != nil {
-			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"status":   "error",
-				"database": "unavailable",
-			})
-		}
-
 		return c.JSON(fiber.Map{
 			"status":   "ok",
 			"database": "ok",
 			"service":  cfg.App.Name,
 		})
 	})
+
+	userRepository := repository.NewUserRepository(db)
+	userService := service.NewUserService(userRepository)
+	userHandler := handler.NewUserHandler(userService)
+
+	api := app.Group("/api/v1")
+
+	users := api.Group("/users")
+
+	users.Post("/", userHandler.Create)
+	users.Get("/:id", userHandler.GetByID)
+	users.Put("/:id", userHandler.Update)
+	users.Delete("/:id", userHandler.Delete)
 
 	log.Fatal(app.Listen(":" + cfg.App.Port))
 }
